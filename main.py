@@ -1,89 +1,79 @@
-"""
-Western Blot Quantification API
---------------------------------
-This FastAPI backend performs:
-
-• Lane detection
-• Band detection
-• Molecular weight calibration (log scale)
-• Band quantification
-• Annotated image generation
-• 3D intensity visualization
-• CSV export of results
-
-Author: Your Name
-"""
-
+# ---------------- IMPORT REQUIRED LIBRARIES ----------------
+# FastAPI for API creation
 from fastapi import FastAPI, File, UploadFile, Query
 from fastapi.staticfiles import StaticFiles
+
+# Image processing
 import numpy as np
 import cv2
+
+# File handling
 import os
 import shutil
+
+# Data handling
 import pandas as pd
+
+# Signal processing for peak detection
 from scipy.signal import find_peaks
+
+# 3D visualization
 import plotly.graph_objects as go
 
-# -------------------------------------------
-# Initialize FastAPI App
-# -------------------------------------------
-app = FastAPI(title="Western Blot Analyzer")
 
-# Folders for uploads and results
+# ---------------- INITIALIZE FASTAPI APP ----------------
+app = FastAPI()
+
+# Define folders to store uploaded files and results
 UPLOAD_FOLDER = "uploads"
 RESULT_FOLDER = "results"
 
+# Create folders if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
-# Allow browser access to result files
+# Expose results folder as static path
 app.mount("/results", StaticFiles(directory="results"), name="results")
 
 
-# -------------------------------------------
-# Main API Endpoint
-# -------------------------------------------
+# ---------------- MAIN ANALYSIS ENDPOINT ----------------
 @app.post("/analyze")
 async def analyze_western_blot(
-    file: UploadFile = File(...),
-    ruler_lane: int = Query(0),
-    min_kda: float = Query(10.0),
-    max_kda: float = Query(200.0),
-    volume_loaded: float = Query(10.0),
-    reference_intensity: float = Query(None),
-    reference_concentration: float = Query(None)
+    file: UploadFile = File(...),  # Uploaded blot image
+    ruler_lane: int = Query(0),  # Lane index containing ladder
+    min_kda: float = Query(10.0),  # Minimum molecular weight
+    max_kda: float = Query(200.0),  # Maximum molecular weight
+    volume_loaded: float = Query(10.0),  # Sample loading volume
+    reference_intensity: float = Query(None),  # Intensity of reference band
+    reference_concentration: float = Query(None)  # Known concentration of reference band
 ):
 
-    # -------------------------------------------
-    # 1. Save Uploaded Image
-    # -------------------------------------------
+    # ---------------- SAVE UPLOADED IMAGE ----------------
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # -------------------------------------------
-    # 2. Image Preprocessing
-    # -------------------------------------------
+    # ---------------- LOAD AND PREPROCESS IMAGE ----------------
+    # Convert to grayscale
     img = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
 
-    # Normalize contrast
+    # Normalize intensity to 0–255
     img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
 
-    # Invert (bands become bright)
+    # Invert image (bands become bright for detection)
     img = 255 - img
 
-    # Reduce noise
+    # Apply Gaussian blur to reduce noise
     img = cv2.GaussianBlur(img, (5, 5), 0)
 
-    # -------------------------------------------
-    # 3. Lane Detection (Vertical Projection)
-    # -------------------------------------------
+    # ---------------- DETECT LANES ----------------
+    # Sum pixel intensities vertically to find lane peaks
     vertical_profile = np.sum(img, axis=0)
 
     lane_peaks, _ = find_peaks(
         vertical_profile,
-        distance=50,
-        prominence=1000
+        distance=50,       # Minimum spacing between lanes
+        prominence=1000    # Minimum lane strength
     )
 
     if len(lane_peaks) == 0:
@@ -91,22 +81,22 @@ async def analyze_western_blot(
 
     band_data = {}
 
-    # -------------------------------------------
-    # 4. Band Detection per Lane
-    # -------------------------------------------
+    # ---------------- DETECT BANDS IN EACH LANE ----------------
     for i, lane_x in enumerate(lane_peaks):
 
+        # Extract narrow vertical region around lane
         left = max(lane_x - 20, 0)
         right = min(lane_x + 20, img.shape[1])
-
         lane_region = img[:, left:right]
 
+        # Sum horizontally to get band intensity profile
         horizontal_profile = np.sum(lane_region, axis=1)
 
+        # Detect band peaks
         band_peaks, properties = find_peaks(
             horizontal_profile,
-            distance=20,
-            prominence=500
+            distance=20,     # Minimum band spacing
+            prominence=500   # Band strength threshold
         )
 
         band_data[i] = {
@@ -115,9 +105,9 @@ async def analyze_western_blot(
             "concentrations": []
         }
 
-    # -------------------------------------------
-    # 5. Molecular Weight Calibration (Log Scale)
-    # -------------------------------------------
+    # ---------------- MOLECULAR WEIGHT CALIBRATION ----------------
+    # Use ladder lane for log-scale calibration
+
     if ruler_lane not in band_data:
         return {"error": "Invalid ruler lane index"}
 
@@ -126,14 +116,14 @@ async def analyze_western_blot(
     if len(ruler_positions) < 2:
         return {"error": "Not enough ladder bands detected"}
 
-    # Generate log10 kDa values
+    # Create log scale between max_kda and min_kda
     log_kda_values = np.linspace(
         np.log10(max_kda),
         np.log10(min_kda),
         len(ruler_positions)
     )
 
-    # Convert pixel position → kDa
+    # Function to convert pixel position to kDa
     def pixel_to_kda(pixel):
         return 10 ** np.interp(
             pixel,
@@ -141,25 +131,19 @@ async def analyze_western_blot(
             log_kda_values
         )
 
-    # -------------------------------------------
-    # 6. Band Quantification
-    # -------------------------------------------
+    # ---------------- BAND QUANTIFICATION ----------------
     results = []
 
     for lane, data in band_data.items():
-        for pos, intensity in zip(
-            data["positions"],
-            data["intensities"]
-        ):
+        for pos, intensity in zip(data["positions"], data["intensities"]):
 
+            # Calculate molecular weight
             kda_value = pixel_to_kda(pos)
 
-            # Relative Quantity Calculation
-            relative_quantity = (
-                intensity / 100.0
-            ) * volume_loaded
+            # Relative quantity (intensity-based scaling)
+            relative_quantity = (intensity / 100.0) * volume_loaded
 
-            # Reference-Based Quantification
+            # Concentration calculation using reference band
             if reference_intensity is not None and reference_concentration is not None:
                 calculated_concentration = (
                     intensity / reference_intensity
@@ -180,45 +164,55 @@ async def analyze_western_blot(
                 )
             })
 
-    # Save results to CSV
+    # Convert to DataFrame and save CSV
     df = pd.DataFrame(results)
     df = df.sort_values(by=["Lane", "kDa"])
     df.reset_index(drop=True, inplace=True)
-    df.to_csv(os.path.join(RESULT_FOLDER, "results.csv"), index=False)
 
-    # -------------------------------------------
-    # 7. Annotated Image Output
-    # -------------------------------------------
+    csv_path = os.path.join(RESULT_FOLDER, "results.csv")
+    df.to_csv(csv_path, index=False)
+
+    # ---------------- CREATE ANNOTATED IMAGE ----------------
     output_img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     for lane, data in band_data.items():
         lane_x = lane_peaks[lane]
 
-        cv2.line(output_img, (lane_x, 0),
-                 (lane_x, img.shape[0]), (255, 0, 0), 1)
+        # Draw lane center line
+        cv2.line(output_img, (lane_x, 0), (lane_x, img.shape[0]), (255, 0, 0), 1)
 
         for idx, pos in enumerate(data["positions"]):
+
+            intensity = data["intensities"][idx]
+            conc = data["concentrations"][idx]
             kda_value = pixel_to_kda(pos)
 
-            cv2.circle(output_img,
-                       (lane_x, pos),
-                       6,
-                       (0, 0, 255),
-                       -1)
+            # Highlight reference band (if exact intensity match)
+            if reference_intensity is not None and intensity == reference_intensity:
+                color = (0, 255, 255)  # Yellow
+            else:
+                color = (0, 0, 255)  # Red
+
+            cv2.circle(output_img, (lane_x, pos), 6, color, -1)
+
+            # Add label text
+            label = f"{round(kda_value,1)} kDa"
+            if conc is not None:
+                label += f" | {round(conc,2)} ng"
 
             cv2.putText(output_img,
-                        f"{round(kda_value,1)} kDa",
-                        (lane_x + 8, pos),
+                        label,
+                        (lane_x + 8, pos - 5),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45,
+                        0.4,
                         (255, 255, 255),
                         1)
 
-    cv2.imwrite(os.path.join(RESULT_FOLDER, "annotated.png"), output_img)
+    # Save annotated image
+    image_path = os.path.join(RESULT_FOLDER, "annotated.png")
+    cv2.imwrite(image_path, output_img)
 
-    # -------------------------------------------
-    # 8. 3D Intensity Surface Plot
-    # -------------------------------------------
+    # ---------------- GENERATE 3D INTENSITY PLOT ----------------
     small_img = cv2.resize(img, (300, 300))
 
     x = np.arange(small_img.shape[1])
@@ -236,11 +230,10 @@ async def analyze_western_blot(
         )
     )
 
-    fig.write_html(os.path.join(RESULT_FOLDER, "3d_plot.html"))
+    plot_path = os.path.join(RESULT_FOLDER, "3d_plot.html")
+    fig.write_html(plot_path)
 
-    # -------------------------------------------
-    # 9. API Response
-    # -------------------------------------------
+    # ---------------- RETURN RESPONSE ----------------
     return {
         "status": "success",
         "lanes_detected": len(lane_peaks),

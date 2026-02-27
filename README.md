@@ -1,117 +1,172 @@
-# 🧪 Western Blot Automated Quantification API
+🧪 Western Blot Automated Quantification API
+📌 Overview
 
-## 📌 Overview
+This FastAPI application performs automated Western blot image analysis, including:
 
-This FastAPI-based application performs automated Western blot image
-analysis including:
+.Image preprocessing
 
--   Image preprocessing
--   Lane detection
--   Band detection
--   Molecular weight calibration (log scale interpolation)
--   Band intensity quantification
--   Optional reference-based concentration calculation
--   Annotated image generation
--   CSV export of results
--   3D intensity visualization (Plotly)
+.Lane detection
 
-------------------------------------------------------------------------
+.Band detection
 
-## ⚙️ Workflow
+.Molecular weight calibration (log scale interpolation)
 
-### 1️⃣ Image Preprocessing
+.Band intensity quantification
 
--   Convert image to grayscale
--   Normalize pixel values (0--255)
--   Invert image (bands become bright)
--   Apply Gaussian blur to reduce noise
+.Optional reference-based concentration calculation
 
-### 2️⃣ Lane Detection
+.Annotated image generation
 
--   Sum pixel intensities vertically (column-wise)
--   Detect peaks in vertical intensity profile
--   Each peak represents a lane
+.CSV export of results
 
-### 3️⃣ Band Detection
+.3D intensity visualization (Plotly)
+⚙️ Workflow
+Flowchart
+        +------------------+
+        |  Upload Image    |
+        +--------+---------+
+                 |
+                 v
+        +------------------+
+        | Preprocessing    |
+        | (Grayscale,      |
+        |  Normalize, Blur)|
+        +--------+---------+
+                 |
+                 v
+        +------------------+
+        | Lane Detection   |
+        | (Column Sum,     |
+        |  Peak Detection) |
+        +--------+---------+
+                 |
+                 v
+        +------------------+
+        | Band Detection   |
+        | (Row Sum, Peaks) |
+        +--------+---------+
+                 |
+                 v
+        +------------------+
+        | Molecular Weight |
+        | Calibration      |
+        +--------+---------+
+                 |
+                 v
+        +------------------+
+        | Quantification   |
+        | (Relative &      |
+        | Reference-Based) |
+        +--------+---------+
+                 |
+                 v
+        +------------------+
+        | Outputs          |
+        | (Annotated Image,|
+        | CSV, 3D Plot)    |
+        +------------------+
+1️⃣ Image Preprocessing
 
--   Crop lane region
--   Sum pixel values horizontally (row-wise)
--   Detect peaks in horizontal profile
--   Each peak corresponds to a protein band
+Convert image to grayscale
 
-### 📊 Band Intensity Calculation
+Normalize pixel values (0–255)
 
-    Intensity = Sum of pixel values across lane width at band position
+Invert image (bands become bright)
 
-This represents **line-integrated optical density (1D integration)**.
+Apply Gaussian blur to reduce noise
+2️⃣ Lane Detection
 
-------------------------------------------------------------------------
+Sum pixel intensities vertically (column-wise)
 
-## 🧬 Molecular Weight Calibration
+Detect peaks in vertical intensity profile
+
+Each peak represents a lane
+
+3️⃣ Band Detection
+
+Crop lane region
+
+Sum pixel values horizontally (row-wise)
+
+Detect peaks in horizontal profile
+
+Each peak corresponds to a protein band
+
+📊 Band Intensity Calculation
+Intensity = Sum of pixel values across lane width at band position
+🧬 Molecular Weight Calibration
 
 Using a selected ruler (ladder) lane:
 
-1.  Detect ladder band positions
-2.  Map pixel positions to log10(kDa) values
-3.  Interpolate using log scale
-4.  Convert back to kDa
+Detect ladder band positions
 
-```{=html}
-<!-- -->
-```
-    kDa = 10^(interpolated_log_value)
+Map pixel positions to log10(kDa) values
 
-------------------------------------------------------------------------
+Interpolate using log scale
 
-## 📈 Quantification
+Convert back to kDa:
+kDa = 10^(interpolated_log_value)
+📈 Quantification
+Relative Quantity
+Relative Quantity = (Band Intensity / 100) × Volume Loaded
+Reference-Based Concentration (Optional)
 
-### Relative Quantity
+If a reference band is provided:
 
-    Relative Quantity = (Band Intensity / 100) × Volume Loaded
+Calculated Concentration = (Band Intensity / Reference Intensity) × Reference Concentration
+📂 Generated Outputs
 
-### Reference-Based Concentration (Optional)
+Output	                  Description
+/results/annotated.png	   Image with labeled bands
+/results/results.csv	   Quantification table
+/results/3d_plot.html	    Interactive 3D intensity plot
+🔌 API Endpoint
 
-If reference band is provided:
+POST /analyze
 
-    Calculated Concentration = 
-    (Band Intensity / Reference Intensity) × Reference Concentration
+Query Parameters
 
-------------------------------------------------------------------------
+Parameter	                   Description
+ruler_lane	                   Index of ladder lane
+min_kda	                       Minimum molecular weight
+max_kda	                       Maximum molecular weight
+volume_loaded	               Sample loading volume
+reference_intensity        	   Known reference band intensity (optional)
+reference_concentration	        Known reference concentration (optional)
+🛠 Tech Stack
 
-## 📂 Generated Outputs
+FastAPI
 
--   `/results/annotated.png` → Image with labeled bands
--   `/results/results.csv` → Quantification table
--   `/results/3d_plot.html` → Interactive 3D intensity plot
+OpenCV
 
-------------------------------------------------------------------------
+NumPy
 
-## 🔌 API Endpoint
+SciPy (find_peaks)
 
-### `POST /analyze`
+Pandas
 
-### Query Parameters
+Plotly
+💻 Installation
+# Clone the repository
+git clone https://github.com/yarrasanitejasree/western-blot-analyzer-1.git
+cd western-blot-analyzer-1
 
-  Parameter                 Description
-  ------------------------- -------------------------------------------
-  ruler_lane                Index of ladder lane
-  min_kda                   Minimum molecular weight
-  max_kda                   Maximum molecular weight
-  volume_loaded             Sample loading volume
-  reference_intensity       Known reference band intensity (optional)
-  reference_concentration   Known reference concentration (optional)
+# Create a virtual environment (recommended)
+python -m venv venv
 
-------------------------------------------------------------------------
+# Linux/macOS
+source venv/bin/activate
 
-## 🛠 Tech Stack
+# Windows
+venv\Scripts\activate
 
--   FastAPI
--   OpenCV
--   NumPy
--   SciPy (find_peaks)
--   Pandas
--   Plotly
+# Install dependencies
+pip install -r requirements.txt
 
-------------------------------------------------------------------------
-
-
+# If requirements.txt doesn’t exist
+pip install fastapi uvicorn opencv-python numpy scipy pandas plotly
+▶️ How to Run
+# Start FastAPI server
+uvicorn main:app --reload
+# Start FastAPI server
+uvicorn main:app --reload

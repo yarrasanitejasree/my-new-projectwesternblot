@@ -1,85 +1,117 @@
-# Western Blot Image Analyzer (FastAPI)
+# 🧪 Western Blot Automated Quantification API
 
-This project is a simple FastAPI application that automatically analyzes
-Western blot images.
+## 📌 Overview
 
-It detects lanes, finds protein bands, calculates molecular weight
-(kDa), and estimates band intensity.
+This FastAPI-based application performs automated Western blot image
+analysis including:
 
-------------------------------------------------------------------------
-
-## What This Project Does
-
-1.  Upload a Western blot image.
-2.  Detect lanes automatically.
-3.  Detect bands inside each lane.
-4.  Use ladder lane to calculate molecular weight (kDa).
-5.  Calculate band intensity.
-6.  Export results as:
-    -   Annotated image
-    -   CSV file
-    -   3D intensity plot
+-   Image preprocessing
+-   Lane detection
+-   Band detection
+-   Molecular weight calibration (log scale interpolation)
+-   Band intensity quantification
+-   Optional reference-based concentration calculation
+-   Annotated image generation
+-   CSV export of results
+-   3D intensity visualization (Plotly)
 
 ------------------------------------------------------------------------
 
-## How Intensity Is Calculated
+## ⚙️ Workflow
 
-For each detected band:
+### 1️⃣ Image Preprocessing
 
-Intensity = Sum of pixel values across the lane width at that band
-position.
+-   Convert image to grayscale
+-   Normalize pixel values (0--255)
+-   Invert image (bands become bright)
+-   Apply Gaussian blur to reduce noise
 
-This means: - Darker band → Higher intensity value - Lighter band →
-Lower intensity value
+### 2️⃣ Lane Detection
 
-Note: This is relative optical density (image-based), not absolute
-protein amount.
+-   Sum pixel intensities vertically (column-wise)
+-   Detect peaks in vertical intensity profile
+-   Each peak represents a lane
 
-------------------------------------------------------------------------
+### 3️⃣ Band Detection
 
-## How Molecular Weight (kDa) Is Calculated
+-   Crop lane region
+-   Sum pixel values horizontally (row-wise)
+-   Detect peaks in horizontal profile
+-   Each peak corresponds to a protein band
 
-1.  Select ladder (ruler) lane.
-2.  Detect ladder band positions.
-3.  Map pixel positions to log(kDa).
-4.  Convert back to kDa using:
+### 📊 Band Intensity Calculation
 
-kDa = 10\^(interpolated log value)
+    Intensity = Sum of pixel values across lane width at band position
 
-------------------------------------------------------------------------
-
-## API Endpoint
-
-POST /analyze
-
-### Parameters:
-
--   ruler_lane → Index of ladder lane
--   min_kda → Minimum molecular weight
--   max_kda → Maximum molecular weight
--   volume_loaded → Sample loading volume
--   reference_intensity → (Optional)
--   reference_concentration → (Optional)
+This represents **line-integrated optical density (1D integration)**.
 
 ------------------------------------------------------------------------
 
-## Output Files
+## 🧬 Molecular Weight Calibration
 
--   results/annotated.png → Image with labeled bands
--   results/results.csv → Table of values
--   results/3d_plot.html → Interactive 3D intensity surface
+Using a selected ruler (ladder) lane:
+
+1.  Detect ladder band positions
+2.  Map pixel positions to log10(kDa) values
+3.  Interpolate using log scale
+4.  Convert back to kDa
+
+```{=html}
+<!-- -->
+```
+    kDa = 10^(interpolated_log_value)
 
 ------------------------------------------------------------------------
 
-## Technologies Used
+## 📈 Quantification
+
+### Relative Quantity
+
+    Relative Quantity = (Band Intensity / 100) × Volume Loaded
+
+### Reference-Based Concentration (Optional)
+
+If reference band is provided:
+
+    Calculated Concentration = 
+    (Band Intensity / Reference Intensity) × Reference Concentration
+
+------------------------------------------------------------------------
+
+## 📂 Generated Outputs
+
+-   `/results/annotated.png` → Image with labeled bands
+-   `/results/results.csv` → Quantification table
+-   `/results/3d_plot.html` → Interactive 3D intensity plot
+
+------------------------------------------------------------------------
+
+## 🔌 API Endpoint
+
+### `POST /analyze`
+
+### Query Parameters
+
+  Parameter                 Description
+  ------------------------- -------------------------------------------
+  ruler_lane                Index of ladder lane
+  min_kda                   Minimum molecular weight
+  max_kda                   Maximum molecular weight
+  volume_loaded             Sample loading volume
+  reference_intensity       Known reference band intensity (optional)
+  reference_concentration   Known reference concentration (optional)
+
+------------------------------------------------------------------------
+
+## 🛠 Tech Stack
 
 -   FastAPI
 -   OpenCV
 -   NumPy
--   SciPy
+-   SciPy (find_peaks)
 -   Pandas
 -   Plotly
 
 ------------------------------------------------------------------------
 
-This project is designed for simple automated Western blot analysis
+
